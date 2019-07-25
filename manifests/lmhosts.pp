@@ -28,7 +28,7 @@ class samba::lmhosts(
   }
 
   # Add static hosts not in the catalog.
-  $list.each |Integer[1] $index, Samba::Lmhosts::Entry $entry| {
+  $list.each |Integer[0] $index, Samba::Lmhosts::Entry $entry| {
     $type = $entry ? {
       Samba::Lmhosts::Alternates::Resource => 'samba::lmhosts::alternates',
       Samba::Lmhosts::Host::Resource       => 'samba::lmhosts::host',

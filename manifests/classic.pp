@@ -47,6 +47,7 @@ class samba::classic(
   $sambaloglevel                  = 1,
   $join_domain                    = true,
   $manage_lmhosts                 = true,
+  $manage_smb                     = true,
   $manage_winbind                 = true,
   $krbconf                        = true,
   $nsswitch                       = true,
@@ -106,13 +107,41 @@ class samba::classic(
     require => File['/etc/samba/'],
   }
 
+  if $manage_smb {
+    $smb_service = 'SambaSmb'
+    service{ $smb_service:
+      ensure  => 'running',
+      name    => $samba::params::servivesmb,
+      require => [ Package['SambaClassic'], File['SambaOptsFile'] ],
+      enable  => true,
+    }
+  }
+  else {
+    $smb_service = []
+  }
+
+  if $manage_winbind {
+    $winbind_service = 'SambaClassicWinBind'
+    package{ $winbind_service:
+      ensure  => 'installed',
+      name    => $samba::params::packagesambawinbind,
+      require => File['/etc/samba/smb_path'],
+    }
+    Package['SambaClassicWinBind'] -> Package['SambaClassic']
+  }
+  else {
+    $winbind_service = []
+  }
+
+  $services_to_notify = [$smb_service, $winbind_service].flatten
+
   if $join_domain {
     if $krbconf {
       file {$samba::params::krbconffile:
         ensure  => present,
         mode    => '0644',
         content => template("${module_name}/krb5.conf.erb"),
-        notify  => Service['SambaSmb', 'SambaWinBind'],
+        notify  => Service[$services_to_notify]
       }
     }
 
@@ -212,22 +241,6 @@ class samba::classic(
   }
 
   if $manage_winbind {
-    package{ 'SambaClassicWinBind':
-      ensure  => 'installed',
-      name    => $samba::params::packagesambawinbind,
-      require => File['/etc/samba/smb_path'],
-    }
-    Package['SambaClassicWinBind'] -> Package['SambaClassic']
-  }
-
-  service{ 'SambaSmb':
-    ensure  => 'running',
-    name    => $samba::params::servivesmb,
-    require => [ Package['SambaClassic'], File['SambaOptsFile'] ],
-    enable  => true,
-  }
-
-  if $manage_winbind {
     service{ 'SambaWinBind':
       ensure  => 'running',
       name    => $samba::params::servivewinbind,
@@ -286,12 +299,6 @@ class samba::classic(
   $mandatoryglobaloptionsindex = prefix(keys($mandatoryglobaloptions),
     '[global]')
 
-  if $manage_winbind {
-    $services_to_notify = ['SambaSmb', 'SambaWinBind']
-  }
-  else {
-    $services_to_notify = ['SambaSmb']
-  }
   samba::option{ $mandatoryglobaloptionsindex:
     options         => $mandatoryglobaloptions,
     section         => 'global',
@@ -330,7 +337,7 @@ class samba::classic(
     notify  => Service[$services_to_notify],
   }
 
-  if $manage_winbind and $join_domain {
+  if $manage_smb and $manage_winbind and $join_domain {
     unless $adminpassword == undef {
       $ou = $joinou ? {
         default => "createcomputer=\"${joinou}\"",
